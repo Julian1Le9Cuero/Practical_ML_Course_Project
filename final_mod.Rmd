@@ -1,0 +1,206 @@
+---
+title: "Classification Task - Gym data"
+author: "Julian Cuero"
+date: "27/12/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading packages
+```{r, message=FALSE}
+library(caret)
+library(randomForest)
+library(lubridate)
+library(ggplot2)
+library(gridExtra)
+```
+
+## Intro
+One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants is used to quantify how well they work out.
+
+## Getting the data
+```{r cache=TRUE}
+training <- read.csv('pml-training.csv')
+testing <- read.csv('pml-testing.csv')
+```
+
+## Performing some data cleaning
+In order to quantify how well the subjects work out the outcome variable `classe` was used for this purpose. 
+
+```{r}
+table(training$classe)
+```
+
+Since there are just 5 levels, it is converted to factor because it was originally stored as character. Something similar is done for the `new_window` variable and the timestamp is converted to date.
+```{r}
+training2 <- within(training, {
+    classe <- as.factor(classe)
+    new_window <- as.factor(new_window)
+    cvtd_timestamp <- dmy_hm(cvtd_timestamp)
+})
+```
+
+It's necessary to apply what was done in the training set to the test set. However it's not performed in the outcome variable because it is not present.
+```{r}
+testing2 <- within(testing, {
+    new_window <- as.factor(new_window)
+    cvtd_timestamp <- dmy_hm(cvtd_timestamp)
+})
+```
+
+The `X` and `user_name` variables are removed since
+they just serve as a subject identifier.
+```{r}
+training2 <- subset(training2, select=-c(X, user_name))
+testing2 <- subset(testing2, select=-c(X, user_name, problem_id))
+```
+
+**Convert character to numeric** - If character or logical convert to numeric because the rest of character/logical variables in the training and test sets contain numeric values.
+```{r}
+to_numeric <- function(df){
+    for(col in names(df)){
+        col_type <- class(df[,c(col)])[1]
+        
+        if(col_type == "character" | col_type == "logical"){
+            df[,c(col)] <- as.numeric(df[,c(col)])
+        }
+    }
+
+    df
+}
+```
+
+```{r warning=FALSE}
+training2 <- to_numeric(training2)
+testing2 <- to_numeric(testing2)
+```
+
+Since there are columns that contain a total number of missing values (NAs) that represent approximately 98% of the observations, variables with a proportion of NAs greater than 97% are excluded.
+```{r}
+clean_dat <- function(df){
+    exclude_cols <- character()
+    total_rows <- nrow(df)
+
+    for(col in names(df)){
+
+        # Count # of NAs for a particular col
+        total_nas <- sum(is.na(df[,c(col)]))
+        na_proportion <- total_nas / total_rows
+
+        # Check if it reaches the threshold
+        if (total_nas > .97){
+            exclude_cols <- append(exclude_cols, col)
+        }
+    }
+
+    exclude_cols
+
+}
+```
+
+```{r}
+exclude_cols <- clean_dat(training2)
+```
+
+Remove cols from both training and test sets.
+```{r}
+training_clean <- training2[, !(names(training2) %in% exclude_cols)]
+testing_final <- testing2[, !(names(testing2) %in% exclude_cols)]
+```
+
+## Modeling
+Since there are 5 labels for the outcome variable and there are more than 50 features, a simple random forest model is trained.
+
+### Create validation set
+```{r}
+set.seed(9265)
+inBuild <- createDataPartition(y=training_clean$classe,
+                               p=.75, list=FALSE)
+
+training_final <- training_clean[inBuild,]
+validation_final <- training_clean[-inBuild,]
+```
+
+It's important to note that 3 candidate models are trained in order to choose the final one based on its accuracy. Each of those try to predict `classe` using all the other variables.
+
+### 1. Create simple random forest
+```{r cache=TRUE}
+set.seed(4250)
+simple_rf <- randomForest(classe ~ ., data=training_final,
+                          importance=TRUE)
+```
+
+#### Measure accuracy
+```{r}
+pred_simple_rf <- predict(simple_rf, validation_final[,-58])
+```
+
+Simple random forest accuracy: **0.9992**
+```{r}
+xtab <- table(pred_simple_rf, validation_final$classe)
+confusionMatrix(xtab)
+```
+
+### 2. Create Principal Component Analysis (PCA) random forest
+```{r cache=TRUE}
+preProc <- preProcess(training_final[,-58], method = "pca",
+                      pcaComp = 3)
+trainPC <- predict(preProc, training_final[,-58])
+pca_rf <- randomForest(training_final$classe ~ ., data=trainPC,
+                       importance=TRUE)
+
+valPC <- predict(preProc, validation_final[,-58])
+```
+
+#### Measure accuracy
+```{r}
+pred_pca_rf <- predict(pca_rf, valPC)
+xtab2 <- table(pred_pca_rf, validation_final$classe)
+```
+
+PCA random forest accuracy: **0.73**
+```{r}
+confusionMatrix(xtab2)
+```
+
+#### 3. Merge the two previous models
+```{r}
+predDF <- data.frame(pred_simple_rf, pred_pca_rf, classe=validation_final$classe)
+```
+
+```{r}
+combRf <- randomForest(classe ~ ., data=predDF,
+                       importance=TRUE)
+```
+
+#### Measure accuracy
+```{r}
+combPred <- predict(combRf, predDF)
+xtab3 <- table(combPred, validation_final$classe)
+```
+
+Merged random forest accuracy: **0.9994**
+```{r}
+confusionMatrix(xtab3)
+```
+
+
+### Which model was the most accurate on the validation set?
+As we saw, it was the **combined random forest**, therefore, it will be the final model that will be used for the test set. Here we can see that its predictions are almost identical to the true labels. 
+```{r}
+quick_df <- data.frame(combPred=combPred)
+
+p1 <- ggplot(quick_df, aes(combPred, fill=combPred)) + geom_bar() +
+    ggtitle("Final model predictions") + theme(legend.position = "none")
+
+p2 <- ggplot(validation_final, aes(classe, fill=classe)) + geom_bar() +
+    ggtitle("Observed values") + theme(legend.position = "none")
+
+grid.arrange(p2, p1)
+```
+
+##### Sources
+<http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har>
