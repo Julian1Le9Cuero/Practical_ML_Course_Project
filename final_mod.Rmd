@@ -138,7 +138,7 @@ simple_rf <- randomForest(classe ~ ., data=training_final,
 pred_simple_rf <- predict(simple_rf, validation_final[,-58])
 ```
 
-Simple random forest accuracy: **0.9992**
+Simple random forest accuracy: **0.9994**
 ```{r}
 xtab <- table(pred_simple_rf, validation_final$classe)
 confusionMatrix(xtab)
@@ -161,7 +161,7 @@ pred_pca_rf <- predict(pca_rf, valPC)
 xtab2 <- table(pred_pca_rf, validation_final$classe)
 ```
 
-PCA random forest accuracy: **0.73**
+PCA random forest accuracy: **0.84**
 ```{r}
 confusionMatrix(xtab2)
 ```

@@ -469,7 +469,7 @@ simple_rf &lt;- randomForest(classe ~ ., data=training_final,
 <div id="measure-accuracy" class="section level4">
 <h4>Measure accuracy</h4>
 <pre class="r"><code>pred_simple_rf &lt;- predict(simple_rf, validation_final[,-58])</code></pre>
-<p>Simple random forest accuracy: <strong>0.9992</strong></p>
+<p>Simple random forest accuracy: <strong>0.9994</strong></p>
 <pre class="r"><code>xtab &lt;- table(pred_simple_rf, validation_final$classe)
 confusionMatrix(xtab)</code></pre>
 <pre><code>## Confusion Matrix and Statistics
@@ -519,7 +519,7 @@ valPC &lt;- predict(preProc, validation_final[,-58])</code></pre>
 <h4>Measure accuracy</h4>
 <pre class="r"><code>pred_pca_rf &lt;- predict(pca_rf, valPC)
 xtab2 &lt;- table(pred_pca_rf, validation_final$classe)</code></pre>
-<p>PCA random forest accuracy: <strong>0.73</strong></p>
+<p>PCA random forest accuracy: <strong>0.84</strong></p>
 <pre class="r"><code>confusionMatrix(xtab2)</code></pre>
 <pre><code>## Confusion Matrix and Statistics
 ## 
